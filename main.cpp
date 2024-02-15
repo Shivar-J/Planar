@@ -20,7 +20,7 @@ public:
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -176,13 +176,34 @@ int main() {
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(0);
 
-
 	Shader shader("shader.vs", "shader.fs");
 
 	shader.use();
 
 	glm::mat4 model = glm::mat4(1.0f);
 	shader.setMat4("model", model);
+
+	float grid[] = {
+		-1000.0f,  0.0f, 0.0f,
+		 1000.0f,  0.0f, 0.0f,
+
+		0.0f, -1000.0f, 0.0f,
+		0.0f,  1000.0f, 0.0f,
+
+		0.0f, 0.0f, -1000.0f,
+		0.0f, 0.0f,  1000.0f
+	};
+
+	GLuint VAO_lines, VBO_lines;
+	glGenVertexArrays(1, &VAO_lines);
+	glGenBuffers(1, &VBO_lines);
+	glBindVertexArray(VAO_lines);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO_lines);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(grid), grid, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
 
 	while (!glfwWindowShouldClose(window)) {
 		float currentFrame = static_cast<float>(glfwGetTime());
@@ -195,21 +216,25 @@ int main() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		shader.use();
-
 		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
 		shader.setMat4("projection", projection);
-
 		glm::mat4 view = camera.GetViewMatrix();
 		shader.setMat4("view", view);
-
+		shader.setVec3("color", glm::vec3(1.0, 0.5, 0.2f));
 		glBindVertexArray(VAO);
 		glDrawArrays(GL_POINTS, 0, points_vec.size());
+
+		shader.setVec3("color", glm::vec3(1.0, 1.0, 1.0f));
+		glBindVertexArray(VAO_lines);
+		glDrawArrays(GL_LINES, 0, sizeof(grid) / sizeof(float) / 3);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 	glDeleteVertexArrays(1, &VAO);
 	glDeleteBuffers(1, &VBO);
+	glDeleteVertexArrays(1, &VAO_lines);
+	glDeleteBuffers(1, &VBO_lines);
 	glfwTerminate();
 	return 0;
 }
