@@ -30,10 +30,13 @@ public:
 		std::stack<std::string> st;
 		std::vector<std::string> postfix;
 		std::string token;
+		bool lastWasOperator = true;
+
 		for (int i = 0; i < infix.size(); i++) {
 			char c = infix[i];
 			if (std::isdigit(c) || c == '.' || std::isalpha(c)) {
 				token += c;
+				lastWasOperator = false;
 			}
 			else {
 				if (!token.empty()) {
@@ -51,14 +54,17 @@ public:
 					st.pop();
 				}
 				else if (isOperator(c)) {
-					while (!st.empty() && st.top() != "(" && precedence(c) <= precedence(st.top()[0])) {
-						postfix.push_back(st.top());
-						st.pop();
+					if (isUnaryMinus(c, i, infix)) {
+						token += c;
 					}
-					st.push(std::string(1, c));
-				}
-				else if (isUnaryMinus(c, i, infix)) {
-					token += '-';
+					else {
+						while (!st.empty() && st.top() != "(" && precedence(c) <= precedence(st.top()[0])) {
+							postfix.push_back(st.top());
+							st.pop();
+						}
+						st.push(std::string(1, c));
+						lastWasOperator = true;
+					}
 				}
 			}
 		}
@@ -75,55 +81,61 @@ public:
 	double calculatePostfix(std::vector<std::string> postfix) {
 		std::stack<double> opstack;
 
-		for (int i = 0; i < postfix.size(); i++) {
-			std::string num = postfix[i];
-			try {
-				if (num.length() == 1 && (num[0] == '+' || num[0] == '-' || num[0] == '*' || num[0] == '/' || num[0] == '^')) {
-					if (opstack.size() < 2)
-						throw std::runtime_error("Not enough operands: " + num);
-
-					double second = opstack.top();
-					opstack.pop();
-					double first = opstack.top();
-					opstack.pop();
-
-					if (num[0] == '+') {
-						double temp = first + second;
-						opstack.push(temp);
-					}
-					else if (num[0] == '-') {
-						double temp = first - second;
-						opstack.push(temp);
-					}
-					else if (num[0] == '*') {
-						double temp = first * second;
-						opstack.push(temp);
-					}
-					else if (num[0] == '/') {
-						if (second == 0) {
-							throw std::runtime_error("Division by zero");
-						}
-						else {
-							double temp = first / second;
-							opstack.push(temp);
-						}
-					}
-					else if (num[0] == '^') {
-						double temp = std::pow(first, second);
-						opstack.push(temp);
-					}
+		for (const std::string& token : postfix) {
+			if (isOperator(token[0]) && token.size() == 1) {
+				double first, second;
+				if (opstack.size() < 1) {
+					std::cout << "Not enough operands for operator: " << token << std::endl;
+					continue;
 				}
 				else {
-					double number = std::stod(num);
+					second = opstack.top();
+					opstack.pop();
+					if (token[0] != '-' || opstack.empty()) {
+						first = opstack.top();
+						opstack.pop();
+					}
+					else
+						first = 0;
+				}
+				double result;
+				switch (token[0]) {
+				case '+':
+					result = first + second;
+					break;
+				case '-':
+					result = first - second;
+					break;
+				case '*':
+					result = first * second;
+					break;
+				case '/':
+					if (second == 0) {
+						std::cout << "Division by zero" << std::endl;
+					}
+					result = first / second;
+					break;
+				case '^':
+					result = std::pow(first, second);
+					break;
+				default:
+					std::cout << "Unknown operator: " << token << std::endl;
+				}
+				opstack.push(result);
+			}
+			else {
+				try {
+					double number = std::stod(token);
 					opstack.push(number);
 				}
-			}
-			catch (const std::exception& e) {
-				//std::cout << "Error" << std::endl;
+				catch (const std::exception& e) {
+					std::cout << "Invalid token: " << token << std::endl;
+				}
 			}
 		}
-		if (opstack.size() != 1)
+		if (opstack.size() != 1) {
 			std::cout << "Invalid postfix expression" << std::endl;
+		}
 		return opstack.top();
 	}
 
