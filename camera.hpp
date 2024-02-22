@@ -7,96 +7,125 @@
 
 #include <vector>
 
-enum Camera_Movement {
+enum class Camera_Movement {
 	FORWARD,
 	BACKWARD,
 	LEFT,
-	RIGHT
+	RIGHT,
+	ROLL_LEFT,
+	ROLL_RIGHT,
+	UP,
+	DOWN
 };
 
-const float YAW = -90.0f;
-const float PITCH = 0.0f;
-const float SPEED = 2.5f;
-const float SENSITIVITY = 0.1;
+const float SPEED = 10.0f;
+const float ROLL_SPEED = 7.5f;
+const float SENSITIVITY = 0.1f;
 const float ZOOM = 45.0f;
 
 class Camera {
 public:
 	glm::vec3 Position;
-	glm::vec3 Front;
-	glm::vec3 Up;
-	glm::vec3 Right;
-	glm::vec3 WorldUp;
-
-	float Yaw;
-	float Pitch;
+	glm::quat Orientation;
+	float RightAngle;
+	float UpAngle;
+	float RollAngle;
 
 	float MovementSpeed;
 	float MouseSensitivity;
 	float Zoom;
+	float RollSpeed;
 
-	Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f), float yaw = YAW, float pitch = PITCH) : Front(glm::vec3(0.0f, 0.0f, -1.0f)), MovementSpeed(SPEED), MouseSensitivity(SENSITIVITY), Zoom(ZOOM) {
+	Camera(glm::vec3 position) : MovementSpeed(SPEED), MouseSensitivity(SENSITIVITY), Zoom(ZOOM), RollSpeed(ROLL_SPEED) {
 		Position = position;
-		WorldUp = up;
-		Yaw = yaw;
-		Pitch = pitch;
+		Orientation = glm::quat(0, 0, 0, -1);
+		RightAngle = 0.0f;
+		UpAngle = 0.0f;
+		RollAngle = 0.0f;
+		updateCameraVectors();
+	}
+
+	Camera(float posX, float posY, float posZ) : MovementSpeed(SPEED), MouseSensitivity(SENSITIVITY), Zoom(ZOOM) {
+		Position = glm::vec3(posX, posY, posZ);
+		Orientation = glm::quat(0, 0, 0, -1);
+		RightAngle = 0.0f;
+		UpAngle = 0.0f;
+		RollAngle = 0.0f;
 		updateCameraVectors();
 	}
 
 	glm::mat4 GetViewMatrix() {
-		return glm::lookAt(Position, Position + Front, Up);
+		glm::quat reverseOrientation = glm::conjugate(Orientation);
+		glm::mat4 rotation = glm::mat4_cast(reverseOrientation);
+		glm::mat4 translation = glm::translate(glm::mat4(1.0), -Position);
+
+		return rotation * translation;
 	}
 
 	void ProcessKeyboard(Camera_Movement direction, float deltaTime) {
 		float velocity = MovementSpeed * deltaTime;
-		if (direction == FORWARD)
+
+		glm::quat qF = Orientation * glm::quat(0, 0, 0, -1) * glm::conjugate(Orientation);
+		glm::vec3 Front = { qF.x, qF.y, qF.z };
+		glm::vec3 Right = glm::normalize(glm::cross(Front, glm::vec3(0, 1, 0)));
+		glm::vec3 Up = glm::normalize(glm::cross(Right, Front));
+		
+		if (direction == Camera_Movement::FORWARD)
 			Position += Front * velocity;
-		if (direction == BACKWARD)
+		if (direction == Camera_Movement::BACKWARD)
 			Position -= Front * velocity;
-		if (direction == LEFT)
+		if (direction == Camera_Movement::LEFT)
 			Position -= Right * velocity;
-		if (direction == RIGHT)
+		if (direction == Camera_Movement::RIGHT)
 			Position += Right * velocity;
+		if (direction == Camera_Movement::UP)
+			Position += Up * velocity;
+		if (direction == Camera_Movement::DOWN)
+			Position -= Up * velocity;
+
+		if (direction == Camera_Movement::ROLL_LEFT) {
+			RollAngle -= deltaTime * ROLL_SPEED;
+		}
+		if (direction == Camera_Movement::ROLL_RIGHT) {
+			RollAngle += deltaTime * ROLL_SPEED;
+		}
+
+		updateCameraVectors();
 	}
 
 	void ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch = true) {
 		xoffset *= MouseSensitivity;
 		yoffset *= MouseSensitivity;
 
-		Yaw += xoffset;
-		Pitch += yoffset;
+		RightAngle += xoffset;
+		UpAngle += yoffset;
 
-		if (constrainPitch) {
-			if (Pitch > 89.0f)
-				Pitch = 89.0f;
-			if (Pitch < -89.0f)
-				Pitch = -89.0f;
-		}
+		if (UpAngle >= 89.0f)
+			UpAngle = 89.0f;
+		if (UpAngle <= -89.0f)
+			UpAngle = -89.0f;
 
 		updateCameraVectors();
 	}
 
 	void ProcessMouseScroll(float yoffset) {
-		Zoom -= (float)yoffset;
-		if (Zoom < 1.0f)
+		if (Zoom >= 1.0f && Zoom <= 45.0f)
+			Zoom -= yoffset;
+		if (Zoom <= 1.0f)
 			Zoom = 1.0f;
-		if (Zoom > 45.0f)
+		if (Zoom >= 45.0f)
 			Zoom = 45.0f;
 	}
 
-private:
 	void updateCameraVectors() {
-		glm::vec3 front;
+		glm::quat aroundY = glm::angleAxis(glm::radians(-RightAngle), glm::vec3(0, 1, 0));
+		glm::quat aroundX = glm::angleAxis(glm::radians(UpAngle), glm::vec3(1, 0, 0));
+		glm::quat roll = glm::angleAxis(glm::radians(RollAngle), glm::vec3(0.0f, 0.0f, 1.0f));
 
-		front.x = cos(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-		front.y = sin(glm::radians(Pitch));
-		front.z = sin(glm::radians(Yaw)) * cos(glm::radians(Pitch));
-		Front = glm::normalize(front);
-
-		Right = glm::normalize(glm::cross(Front, WorldUp));
-		Up = glm::normalize(glm::cross(Right, Front));
+		Orientation = roll * aroundY * aroundX;
+		
+		Orientation = glm::normalize(Orientation);
 	}
 };
-
 
 #endif // !CAMERA_H
