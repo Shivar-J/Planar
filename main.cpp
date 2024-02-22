@@ -33,13 +33,21 @@ void processInput(GLFWwindow* window) {
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, true);
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		camera.ProcessKeyboard(FORWARD, deltaTime);
+		camera.ProcessKeyboard(Camera_Movement::FORWARD, deltaTime);
 	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		camera.ProcessKeyboard(BACKWARD, deltaTime);
+		camera.ProcessKeyboard(Camera_Movement::BACKWARD, deltaTime);
 	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		camera.ProcessKeyboard(LEFT, deltaTime);
+		camera.ProcessKeyboard(Camera_Movement::LEFT, deltaTime);
 	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		camera.ProcessKeyboard(RIGHT, deltaTime);
+		camera.ProcessKeyboard(Camera_Movement::RIGHT, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+		camera.ProcessKeyboard(Camera_Movement::ROLL_LEFT, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+		camera.ProcessKeyboard(Camera_Movement::ROLL_RIGHT, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+		camera.ProcessKeyboard(Camera_Movement::UP, deltaTime);
+	if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+		camera.ProcessKeyboard(Camera_Movement::DOWN, deltaTime);
 }
 
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
@@ -102,9 +110,16 @@ int main() {
 	equation.erase(remove(equation.begin(), equation.end(), ' '), equation.end());
 	file << equation << std::endl;
 
+	std::cout << "Enter Equation 2" << std::endl;
+	std::string equation2;
+	std::getline(std::cin, equation2);
+	equation2.erase(remove(equation2.begin(), equation2.end(), ' '), equation2.end());
+	file << equation2 << std::endl;
+
 	auto start = std::chrono::high_resolution_clock::now();
 
 	std::vector<Vertex> vertices = generateVertices(minX, maxX, minY, maxY, samplesX, samplesY, equation);
+	//std::vector<Vertex> vertices2 = generateVertices(minX, maxX, minY, maxY, samplesX, samplesY, equation2);
 	std::vector<glm::vec3> points_vec;
 
 	auto end = std::chrono::high_resolution_clock::now();
@@ -113,24 +128,39 @@ int main() {
 
 	std::vector <std::string> output;
 	output.resize(vertices.size());
+	std::vector <std::string> output2;
+	//output2.resize(vertices2.size());
 
 #pragma omp parallel for
 	for (int i = 0; i < vertices.size(); i++) {
 		const Vertex& v = vertices[i];
 		std::ostringstream ss;
 		ss << "x: " << v.x << ", y: " << v.y << ", z: " << v.z << std::endl;
-		points_vec.push_back(glm::vec3(v.x, v.y, v.z));
+		points_vec.push_back(glm::vec3(v.x, v.z, v.y));
 		output[i] = ss.str();
 	}
 
 	for (const auto& s : output) {
 		file << s;
 	}
+/*
+#pragma omp parallel for
+	for (int i = 0; i < vertices2.size(); i++) {
+		const Vertex& v = vertices2[i];
+		std::ostringstream ss;
+		ss << "x: " << v.x << ", y: " << v.y << ", z: " << v.z << std::endl;
+		points_vec.push_back(glm::vec3(v.x, v.y, v.z));
+		output2[i] = ss.str();
+	}
 
+	for (const auto& s : output2) {
+		file << s;
+	}
+	*/
 	auto end_write = std::chrono::high_resolution_clock::now();
 
 	std::chrono::duration<double> vertex_runtime = end - start;
-	std::chrono::duration<double> write_runtime = end - start;
+	std::chrono::duration<double> write_runtime = end_write - start_write;
 
 	std::cout << "Generate vertices runtime: " << std::fixed << vertex_runtime.count() << std::setprecision(5) << "s" << std::endl;
 	std::cout << "Print vertices runtime: " << std::fixed << write_runtime.count() << std::setprecision(5) << "s" << std::endl;

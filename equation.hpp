@@ -4,6 +4,7 @@
 #include <fstream>
 #include <string>
 #include <stack>
+#include <map>
 
 class Equation {
 public:
@@ -18,8 +19,12 @@ public:
 			return -1;
 	}
 
+	bool isFunction(std::string term) {
+		return (term == "sin" || term == "cos" || term == "tan" || term == "log");
+	}
+
 	bool isUnaryMinus(char c, size_t pos, const std::string& infix) {
-		return c == '-' && (pos == 0 || infix[pos - 1] == '(' || isOperator(infix[pos - 1]));
+		return c == '-' && (pos == 0 || infix[pos - 1] == '(' || isOperator(infix[pos - 1]) || infix[pos - 1] == ' ');
 	}
 
 	bool isOperator(char c) {
@@ -75,6 +80,7 @@ public:
 			postfix.push_back(st.top());
 			st.pop();
 		}
+
 		return postfix;
 	}
 
@@ -83,7 +89,7 @@ public:
 
 		for (const std::string& token : postfix) {
 			if (isOperator(token[0]) && token.size() == 1) {
-				double first, second;
+				double first, second, result;
 				if (opstack.size() < 1) {
 					std::cout << "Not enough operands for operator: " << token << std::endl;
 					continue;
@@ -91,14 +97,9 @@ public:
 				else {
 					second = opstack.top();
 					opstack.pop();
-					if (token[0] != '-' || opstack.empty()) {
-						first = opstack.top();
-						opstack.pop();
-					}
-					else
-						first = 0;
+					first = opstack.top();
+					opstack.pop();
 				}
-				double result;
 				switch (token[0]) {
 				case '+':
 					result = first + second;
@@ -121,6 +122,27 @@ public:
 				default:
 					std::cout << "Unknown operator: " << token << std::endl;
 				}
+				opstack.push(result);
+			}
+			else if (isFunction(token)) {
+				if (opstack.empty()) {
+					std::cout << "Not enough operators for function: " << token << std::endl;
+				}
+
+				double operand = opstack.top();
+				opstack.pop();
+
+				double result;
+				if (token == "sin")
+					result = std::sin(operand);
+				else if (token == "cos")
+					result = std::cos(operand);
+				else if (token == "tan")
+					result = std::tan(operand);
+				else if (token == "log")
+					result = std::log10(operand);
+				else
+					std::cout << "Unknown function: " << token << std::endl;
 				opstack.push(result);
 			}
 			else {
