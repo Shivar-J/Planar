@@ -1,3 +1,7 @@
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 #include "shader.hpp"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -9,14 +13,19 @@
 #include <omp.h>
 #include <chrono>
 #include <iomanip>
-#include <gl/GL.h>
-
 
 class Vertex {
 public:
 	double x, y, z;
 	Vertex(double x, double y, double z) : x(x), y(y), z(z) {}
 };
+
+std::ofstream file;
+
+double minX = -25.0, maxX = 25.0, minY = minX, maxY = maxX;
+int samplesX = 1000, samplesY = samplesX;
+
+std::string equation, equation2;
 
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
@@ -25,9 +34,15 @@ Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
+bool mouseFocusGLFW = true;
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
+
+GLuint VAO, VBO;
+std::vector<Vertex> vertices;
+std::vector<glm::vec3> points_vec;
+std::vector <std::string> output;
 
 void processInput(GLFWwindow* window) {
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -48,26 +63,35 @@ void processInput(GLFWwindow* window) {
 		camera.ProcessKeyboard(Camera_Movement::UP, deltaTime);
 	if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
 		camera.ProcessKeyboard(Camera_Movement::DOWN, deltaTime);
+	
+}
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+	if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS)
+		mouseFocusGLFW = !mouseFocusGLFW;
 }
 
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 {
-	float xpos = static_cast<float>(xposIn);
-	float ypos = static_cast<float>(yposIn);
+	if (mouseFocusGLFW) {
+		float xpos = static_cast<float>(xposIn);
+		float ypos = static_cast<float>(yposIn);
 
-	if (firstMouse) {
+		if (firstMouse) {
+			lastX = xpos;
+			lastY = ypos;
+			firstMouse = false;
+		}
+
+		float xoffset = xpos - lastX;
+		float yoffset = lastY - ypos;
+
 		lastX = xpos;
 		lastY = ypos;
-		firstMouse = false;
+
+		camera.ProcessMouseMovement(xoffset, yoffset);
 	}
-
-	float xoffset = xpos - lastX;
-	float yoffset = lastY - ypos;
-
-	lastX = xpos;
-	lastY = ypos;
-
-	camera.ProcessMouseMovement(xoffset, yoffset);
+	
 }
 
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
@@ -95,41 +119,28 @@ std::vector<Vertex> generateVertices(double minX, double maxX, double minY, doub
 			vertices.push_back(Vertex(x, y, z));
 		}
 	}
+	std::cout << std::endl;
+
 	return vertices;
 }
 
-int main() {
-	std::ofstream file;
+void handleEquation() {
 	file.open("vertices.txt");
-	double minX = -25.0, maxX = 25.0, minY = -25.0, maxY = 25.0;
-	int samplesX = 1000, samplesY = 1000;
 
 	std::cout << "Enter Equation" << std::endl;
-	std::string equation;
 	std::getline(std::cin, equation);
 	equation.erase(remove(equation.begin(), equation.end(), ' '), equation.end());
 	file << equation << std::endl;
 
-	std::cout << "Enter Equation 2" << std::endl;
-	std::string equation2;
-	std::getline(std::cin, equation2);
-	equation2.erase(remove(equation2.begin(), equation2.end(), ' '), equation2.end());
-	file << equation2 << std::endl;
-
 	auto start = std::chrono::high_resolution_clock::now();
 
-	std::vector<Vertex> vertices = generateVertices(minX, maxX, minY, maxY, samplesX, samplesY, equation);
-	//std::vector<Vertex> vertices2 = generateVertices(minX, maxX, minY, maxY, samplesX, samplesY, equation2);
-	std::vector<glm::vec3> points_vec;
+	vertices = generateVertices(minX, maxX, minY, maxY, samplesX, samplesY, equation);
 
 	auto end = std::chrono::high_resolution_clock::now();
 
 	auto start_write = std::chrono::high_resolution_clock::now();
 
-	std::vector <std::string> output;
 	output.resize(vertices.size());
-	std::vector <std::string> output2;
-	//output2.resize(vertices2.size());
 
 #pragma omp parallel for
 	for (int i = 0; i < vertices.size(); i++) {
@@ -143,20 +154,6 @@ int main() {
 	for (const auto& s : output) {
 		file << s;
 	}
-/*
-#pragma omp parallel for
-	for (int i = 0; i < vertices2.size(); i++) {
-		const Vertex& v = vertices2[i];
-		std::ostringstream ss;
-		ss << "x: " << v.x << ", y: " << v.y << ", z: " << v.z << std::endl;
-		points_vec.push_back(glm::vec3(v.x, v.y, v.z));
-		output2[i] = ss.str();
-	}
-
-	for (const auto& s : output2) {
-		file << s;
-	}
-	*/
 	auto end_write = std::chrono::high_resolution_clock::now();
 
 	std::chrono::duration<double> vertex_runtime = end - start;
@@ -164,6 +161,36 @@ int main() {
 
 	std::cout << "Generate vertices runtime: " << std::fixed << vertex_runtime.count() << std::setprecision(5) << "s" << std::endl;
 	std::cout << "Print vertices runtime: " << std::fixed << write_runtime.count() << std::setprecision(5) << "s" << std::endl;
+}
+
+void rerender(std::string expression) {
+	equation = expression;
+	vertices.clear();
+	points_vec.clear();
+	
+	vertices = generateVertices(minX, maxX, minY, maxY, samplesX, samplesY, expression);
+
+#pragma omp parallel for
+	for (int i = 0; i < vertices.size(); i++) {
+		const Vertex& v = vertices[i];
+		std::ostringstream ss;
+		ss << "x: " << v.x << ", y: " << v.y << ", z: " << v.z << std::endl;
+		points_vec.push_back(glm::vec3(v.x, v.z, v.y));
+	}
+
+	glm::vec3* new_points = points_vec.data();
+
+	glGenVertexArrays(1, &VAO);
+	glGenBuffers(1, &VBO);
+	glBindVertexArray(VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, points_vec.size() * sizeof(glm::vec3), new_points, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+}
+
+int main() {
+	handleEquation();
 
 	glm::vec3* points = points_vec.data();
 
@@ -172,9 +199,7 @@ int main() {
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	//equation handling here
-
-	GLFWwindow* window = glfwCreateWindow(800, 600, "3d Visualizer", NULL, NULL);
+	GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Planar", NULL, NULL);
 	if (window == NULL) {
 		std::cout << "Failed to create GLFW window!" << std::endl;
 		glfwTerminate();
@@ -185,6 +210,7 @@ int main() {
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	glfwSetCursorPosCallback(window, mouse_callback);
 	glfwSetScrollCallback(window, scroll_callback);
+	glfwSetKeyCallback(window, key_callback);
 
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -195,7 +221,6 @@ int main() {
 
 	glEnable(GL_DEPTH_TEST);
 
-	GLuint VAO, VBO;
 	glGenVertexArrays(1, &VAO);
 	glGenBuffers(1, &VBO);
 	glBindVertexArray(VAO);
@@ -233,7 +258,15 @@ int main() {
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
 
-	
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	ImGui::StyleColorsDark();
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
+	ImGui_ImplOpenGL3_Init("#version 330");
+
+	float data[] = {1.0, 0.5, 0.2};
+	char buf[256] = "";
 
 	while (!glfwWindowShouldClose(window)) {
 		float currentFrame = static_cast<float>(glfwGetTime());
@@ -245,12 +278,28 @@ int main() {
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+		
+		if (!mouseFocusGLFW) {
+			io.WantCaptureMouse = true;
+			io.WantCaptureKeyboard = true;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		}
+		else {
+			io.WantCaptureMouse = false;
+			io.WantCaptureKeyboard = false;
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		}
+
 		shader.use();
 		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
 		shader.setMat4("projection", projection);
 		glm::mat4 view = camera.GetViewMatrix();
 		shader.setMat4("view", view);
-		shader.setVec3("color", glm::vec3(1.0, 0.5, 0.2));
+		glm::vec3 colour = glm::make_vec3(data);
+		shader.setVec3("color", colour);
 		glBindVertexArray(VAO);
 		glDrawArrays(GL_POINTS, 0, points_vec.size());
 
@@ -258,9 +307,40 @@ int main() {
 		glBindVertexArray(VAO_lines);
 		glDrawArrays(GL_LINES, 0, sizeof(grid) / sizeof(float) / 3);
 		
+		ImGui::Begin("Planar");
+		ImGui::Checkbox("Toggle Input", &mouseFocusGLFW);
+		ImGui::InputText("Equation", buf, 256);
+		ImGui::ColorEdit4("Colour", data);
+		ImGui::SliderInt("Sample Size", &samplesX, 1, 5000);
+		if (ImGui::Button("Rerender")) {
+			glDeleteVertexArrays(1, &VAO);
+			glDeleteBuffers(1, &VBO);
+
+			rerender(equation);
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Render New Equation")) {
+			std::string expression = buf;
+
+			glDeleteVertexArrays(1, &VAO);
+			glDeleteBuffers(1, &VBO);
+
+			rerender(expression);
+		}
+			
+		ImGui::End();
+
+		ImGui::Render();
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
+
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+
 	glDeleteVertexArrays(1, &VAO);
 	glDeleteBuffers(1, &VBO);
 	glDeleteVertexArrays(1, &VAO_lines);
