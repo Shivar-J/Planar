@@ -327,7 +327,7 @@ int main() {
 
 			rerender(expression);
 		}
-			
+		ImGui::Text("%.1f FPS", io.Framerate);
 		ImGui::End();
 
 		ImGui::Render();
