@@ -1,7 +1,7 @@
 # Planar
 Planar is a three dimensional graph visualizer. Made using OpenGL.
 
-## Current state of Planar showcased susing $\sin(x) + \cos(x)$ and $x^2 + y^2$
+## Current state of Planar showcased with $\sin(x) + \cos(x)$ and $x^2 + y^2$
 ![](https://github.com/Shivar-J/Planar/blob/main/GIFs/3DVisualizer_9ghyowwBw0.gif)
 <br />Current implementation allows for new equations to be generated and rendered from the window and adjustment of sample size.
 
