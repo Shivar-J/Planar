@@ -6,26 +6,14 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include "camera.hpp"
-#include "equation.hpp"
-#include <algorithm>
-#include <execution>
-#include <functional>
-#include <omp.h>
 #include <chrono>
 #include <iomanip>
+#include "exprtk.hpp"
 
-class Vertex {
-public:
-	double x, y, z;
-	Vertex(double x, double y, double z) : x(x), y(y), z(z) {}
-};
-
-std::ofstream file;
-
-double minX = -25.0, maxX = 25.0, minY = minX, maxY = maxX;
+float minX = -25.0, maxX = 25.0, minY = minX, maxY = maxX;
 int samplesX = 1000, samplesY = samplesX;
 
-std::string equation, equation2;
+std::string equation;
 
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
@@ -40,30 +28,29 @@ float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
 GLuint VAO, VBO;
-std::vector<Vertex> vertices;
 std::vector<glm::vec3> points_vec;
-std::vector <std::string> output;
 
 void processInput(GLFWwindow* window) {
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, true);
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		camera.ProcessKeyboard(Camera_Movement::FORWARD, deltaTime);
-	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		camera.ProcessKeyboard(Camera_Movement::BACKWARD, deltaTime);
-	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		camera.ProcessKeyboard(Camera_Movement::LEFT, deltaTime);
-	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		camera.ProcessKeyboard(Camera_Movement::RIGHT, deltaTime);
-	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
-		camera.ProcessKeyboard(Camera_Movement::ROLL_LEFT, deltaTime);
-	if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
-		camera.ProcessKeyboard(Camera_Movement::ROLL_RIGHT, deltaTime);
-	if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-		camera.ProcessKeyboard(Camera_Movement::UP, deltaTime);
-	if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
-		camera.ProcessKeyboard(Camera_Movement::DOWN, deltaTime);
-	
+	if (mouseFocusGLFW) {
+		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+			camera.ProcessKeyboard(Camera_Movement::FORWARD, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+			camera.ProcessKeyboard(Camera_Movement::BACKWARD, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+			camera.ProcessKeyboard(Camera_Movement::LEFT, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+			camera.ProcessKeyboard(Camera_Movement::RIGHT, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+			camera.ProcessKeyboard(Camera_Movement::ROLL_LEFT, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+			camera.ProcessKeyboard(Camera_Movement::ROLL_RIGHT, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+			camera.ProcessKeyboard(Camera_Movement::UP, deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+			camera.ProcessKeyboard(Camera_Movement::DOWN, deltaTime);
+	}
 }
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -104,79 +91,37 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 	glViewport(0, 0, width, height);
 }
 
-std::vector<Vertex> generateVertices(double minX, double maxX, double minY, double maxY, int samplesX, int samplesY, std::string expression) {
-	Equation function;
-	std::vector<Vertex> vertices;
+void generateVertices(float minX, float maxX, float minY, float maxY, int samplesX, int samplesY, std::string expression) {
+	exprtk::symbol_table<float> symbol_table;
+	exprtk::expression<float> expr;
+	exprtk::parser<float> parser;
 
-	double stepX = (maxX - minX) / samplesX;
-	double stepY = (maxY - minY) / samplesY;
+	float stepX = (maxX - minX) / samplesX;
+	float stepY = (maxY - minY) / samplesY;
 
-#pragma omp parallel for collapse(2) schedule(static)
-	for (double x = minX; x <= maxX; x += stepX) {
-		for (double y = minY; y <= maxY; y += stepY) {
-			double z = function.evaluateWithXY(expression, x, y);
-#pragma omp critical
-			vertices.push_back(Vertex(x, y, z));
+	float x, y;
+
+	symbol_table.add_variable("x", x);
+	symbol_table.add_variable("y", y);
+
+	expr.register_symbol_table(symbol_table);
+	parser.compile(expression, expr);
+
+	for (float x = minX; x <= maxX; x += stepX) {
+		for (float y = minY; y <= maxY; y += stepY) {
+			symbol_table.get_variable("x")->ref() = x;
+			symbol_table.get_variable("y")->ref() = y;
+			float z = expr.value();
+			points_vec.push_back(glm::vec3(x, z, y));
 		}
 	}
-	std::cout << std::endl;
-
-	return vertices;
-}
-
-void handleEquation() {
-	file.open("vertices.txt");
-
-	std::cout << "Enter Equation" << std::endl;
-	std::getline(std::cin, equation);
-	equation.erase(remove(equation.begin(), equation.end(), ' '), equation.end());
-	file << equation << std::endl;
-
-	auto start = std::chrono::high_resolution_clock::now();
-
-	vertices = generateVertices(minX, maxX, minY, maxY, samplesX, samplesY, equation);
-
-	auto end = std::chrono::high_resolution_clock::now();
-
-	auto start_write = std::chrono::high_resolution_clock::now();
-
-	output.resize(vertices.size());
-
-#pragma omp parallel for
-	for (int i = 0; i < vertices.size(); i++) {
-		const Vertex& v = vertices[i];
-		std::ostringstream ss;
-		ss << "x: " << v.x << ", y: " << v.y << ", z: " << v.z << std::endl;
-		points_vec.push_back(glm::vec3(v.x, v.z, v.y));
-		output[i] = ss.str();
-	}
-
-	for (const auto& s : output) {
-		file << s;
-	}
-	auto end_write = std::chrono::high_resolution_clock::now();
-
-	std::chrono::duration<double> vertex_runtime = end - start;
-	std::chrono::duration<double> write_runtime = end_write - start_write;
-
-	std::cout << "Generate vertices runtime: " << std::fixed << vertex_runtime.count() << std::setprecision(5) << "s" << std::endl;
-	std::cout << "Print vertices runtime: " << std::fixed << write_runtime.count() << std::setprecision(5) << "s" << std::endl;
 }
 
 void rerender(std::string expression) {
 	equation = expression;
-	vertices.clear();
 	points_vec.clear();
 	
-	vertices = generateVertices(minX, maxX, minY, maxY, samplesX, samplesY, expression);
-
-#pragma omp parallel for
-	for (int i = 0; i < vertices.size(); i++) {
-		const Vertex& v = vertices[i];
-		std::ostringstream ss;
-		ss << "x: " << v.x << ", y: " << v.y << ", z: " << v.z << std::endl;
-		points_vec.push_back(glm::vec3(v.x, v.z, v.y));
-	}
+	generateVertices(minX, maxX, minY, maxY, samplesX, samplesY, expression);
 
 	glm::vec3* new_points = points_vec.data();
 
@@ -190,9 +135,7 @@ void rerender(std::string expression) {
 }
 
 int main() {
-	handleEquation();
-
-	glm::vec3* points = points_vec.data();
+	ShowWindow(GetConsoleWindow(), SW_HIDE);
 
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -220,14 +163,6 @@ int main() {
 	}
 
 	glEnable(GL_DEPTH_TEST);
-
-	glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-	glBindVertexArray(VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, points_vec.size() * sizeof(glm::vec3), points, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(0);
 
 	Shader shader("shader.vs", "shader.fs");
 
@@ -311,8 +246,12 @@ int main() {
 		ImGui::Checkbox("Toggle Input", &mouseFocusGLFW);
 		ImGui::InputText("Equation", buf, 256);
 		ImGui::ColorEdit4("Colour", data);
-		ImGui::SliderInt("Sample Size", &samplesX, 1, 5000);
-		if (ImGui::Button("Rerender")) {
+		ImGui::SliderInt("Sample Size", &samplesX, 1, 10000);
+		ImGui::SliderFloat("Minimum X", &minX, -100, 0);
+		ImGui::SliderFloat("Maxmimum X", &maxX, 0, 100);
+		ImGui::SliderFloat("Minimum Y", &minY, -100, 0);
+		ImGui::SliderFloat("Maxmimum Y", &maxY, 0, 100);
+		if (ImGui::Button("Render")) {
 			glDeleteVertexArrays(1, &VAO);
 			glDeleteBuffers(1, &VBO);
 
