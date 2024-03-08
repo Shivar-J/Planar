@@ -1,13 +1,12 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "imgui_internal.h"
 
 #include "shader.hpp"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include "camera.hpp"
-#include <chrono>
-#include <iomanip>
 #include "exprtk.hpp"
 
 float minX = -25.0, maxX = 25.0, minY = minX, maxY = maxX;
@@ -18,11 +17,12 @@ std::string equation;
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
 
-Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
+Camera camera(glm::vec3(0.0f, 6.0f, 12.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
-bool mouseFocusGLFW = true;
+bool mouseFocusGLFW = false;
+bool showControls = true;
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -91,7 +91,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 	glViewport(0, 0, width, height);
 }
 
-void generateVertices(float minX, float maxX, float minY, float maxY, int samplesX, int samplesY, std::string expression) {
+void generate_vertices(float minX, float maxX, float minY, float maxY, int samplesX, int samplesY, std::string expression) {
 	exprtk::symbol_table<float> symbol_table;
 	exprtk::expression<float> expr;
 	exprtk::parser<float> parser;
@@ -99,8 +99,15 @@ void generateVertices(float minX, float maxX, float minY, float maxY, int sample
 	float stepX = (maxX - minX) / samplesX;
 	float stepY = (maxY - minY) / samplesY;
 
+	const double e = 2.71828182845904523536028747135266249775724709369996;
+	const double pi = 3.14159265358979323846264338327950288419716939937510;
+
 	float x, y;
 
+	symbol_table.add_constant("e", e);
+
+	symbol_table.add_pi();
+	
 	symbol_table.add_variable("x", x);
 	symbol_table.add_variable("y", y);
 
@@ -121,7 +128,7 @@ void rerender(std::string expression) {
 	equation = expression;
 	points_vec.clear();
 	
-	generateVertices(minX, maxX, minY, maxY, samplesX, samplesY, expression);
+	generate_vertices(minX, maxX, minY, maxY, samplesX, samplesY, expression);
 
 	glm::vec3* new_points = points_vec.data();
 
@@ -243,6 +250,24 @@ int main() {
 		glDrawArrays(GL_LINES, 0, sizeof(grid) / sizeof(float) / 3);
 		
 		ImGui::Begin("Planar");
+
+		if (showControls) {
+			ImGui::OpenPopup("Controls");
+		}
+		if (ImGui::BeginPopupModal("Controls", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+			ImGui::Text("WASD to move");
+			ImGui::Text("Left Control: Down\nSpace: Up");
+			ImGui::Text("Q: rotate left\nE: rotate right");
+			ImGui::Text("C: toggle input");
+			ImGui::Separator();
+			if (ImGui::Button("Close")) {
+				showControls = !showControls;
+				mouseFocusGLFW = true;
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndPopup();
+		}
+
 		ImGui::Checkbox("Toggle Input", &mouseFocusGLFW);
 		ImGui::InputText("Equation", buf, 256);
 		ImGui::ColorEdit4("Colour", data);
@@ -251,6 +276,7 @@ int main() {
 		ImGui::SliderFloat("Maxmimum X", &maxX, 0, 100);
 		ImGui::SliderFloat("Minimum Y", &minY, -100, 0);
 		ImGui::SliderFloat("Maxmimum Y", &maxY, 0, 100);
+		ImGui::Text("Camera Position: %s", glm::to_string(camera.Position).c_str());
 		if (ImGui::Button("Render")) {
 			glDeleteVertexArrays(1, &VAO);
 			glDeleteBuffers(1, &VBO);
@@ -259,14 +285,16 @@ int main() {
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Render New Equation")) {
-			std::string expression = buf;
+			equation = buf;
 
 			glDeleteVertexArrays(1, &VAO);
 			glDeleteBuffers(1, &VBO);
 
-			rerender(expression);
+			rerender(equation);
 		}
+
 		ImGui::Text("%.1f FPS", io.Framerate);
+
 		ImGui::End();
 
 		ImGui::Render();

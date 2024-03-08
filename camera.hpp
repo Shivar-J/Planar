@@ -1,9 +1,10 @@
 #ifndef CAMERA_H
 #define CAMERA_H
-
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/string_cast.hpp>
 
 #include <vector>
 
@@ -39,6 +40,15 @@ public:
 	Camera(glm::vec3 position) : MovementSpeed(SPEED), MouseSensitivity(SENSITIVITY), Zoom(ZOOM), RollSpeed(ROLL_SPEED) {
 		Position = position;
 		Orientation = glm::quat(0, 0, 0, -1);
+		RightAngle = 0.0f;
+		UpAngle = 0.0f;
+		RollAngle = 0.0f;
+		updateCameraVectors();
+	}
+
+	Camera(glm::vec3 position, glm::quat orientation) : MovementSpeed(SPEED), MouseSensitivity(SENSITIVITY), Zoom(ZOOM), RollSpeed(ROLL_SPEED) {
+		Position = position;
+		Orientation = orientation;
 		RightAngle = 0.0f;
 		UpAngle = 0.0f;
 		RollAngle = 0.0f;

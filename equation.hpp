@@ -112,7 +112,7 @@ public:
 					break;
 				case '/':
 					if (second == 0) {
-						std::cout << "Division by zero" << std::endl;
+						//std::cout << "Division by zero" << std::endl;
 					}
 					result = first / second;
 					break;
@@ -156,7 +156,7 @@ public:
 			}
 		}
 		if (opstack.size() != 1) {
-			std::cout << "Invalid postfix expression" << std::endl;
+			//std::cout << "Invalid postfix expression" << std::endl;
 		}
 		return opstack.top();
 	}
