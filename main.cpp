@@ -8,6 +8,7 @@
 #include <GLFW/glfw3.h>
 #include "camera.hpp"
 #include "exprtk.hpp"
+#include <chrono>
 
 float minX = -25.0, maxX = 25.0, minY = minX, maxY = maxX;
 int samplesX = 1000, samplesY = samplesX;
@@ -54,7 +55,7 @@ void processInput(GLFWwindow* window) {
 }
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-	if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS)
+	if (glfwGetKey(window, GLFW_KEY_GRAVE_ACCENT) == GLFW_PRESS)
 		mouseFocusGLFW = !mouseFocusGLFW;
 }
 
@@ -114,10 +115,11 @@ void generate_vertices(float minX, float maxX, float minY, float maxY, int sampl
 	expr.register_symbol_table(symbol_table);
 	parser.compile(expression, expr);
 
-	for (float x = minX; x <= maxX; x += stepX) {
-		for (float y = minY; y <= maxY; y += stepY) {
-			symbol_table.get_variable("x")->ref() = x;
-			symbol_table.get_variable("y")->ref() = y;
+	symbol_table.get_variable("x")->ref() = x;
+	symbol_table.get_variable("y")->ref() = y;
+
+	for (x = minX; x <= maxX; x += stepX) {
+		for (y = minY; y <= maxY; y += stepY) {
 			points_vec.push_back(glm::vec3(x, expr.value(), y));
 		}
 	}
@@ -257,7 +259,7 @@ int main() {
 			ImGui::Text("WASD to move");
 			ImGui::Text("Left Control: Down\nSpace: Up");
 			ImGui::Text("Q: rotate left\nE: rotate right");
-			ImGui::Text("C: toggle input");
+			ImGui::Text("`: toggle input");
 			ImGui::Separator();
 			if (ImGui::Button("Close")) {
 				showControls = !showControls;
@@ -270,11 +272,11 @@ int main() {
 		ImGui::Checkbox("Toggle Input", &mouseFocusGLFW);
 		ImGui::InputText("Equation", buf, 256);
 		ImGui::ColorEdit4("Colour", data);
-		ImGui::SliderInt("Sample Size", &samplesX, 1, 10000);
-		ImGui::SliderFloat("Minimum X", &minX, -100, 0);
-		ImGui::SliderFloat("Maxmimum X", &maxX, 0, 100);
-		ImGui::SliderFloat("Minimum Y", &minY, -100, 0);
-		ImGui::SliderFloat("Maxmimum Y", &maxY, 0, 100);
+		ImGui::SliderInt("Sample Size", &samplesX, 1, 100000);
+		ImGui::SliderFloat("Minimum X", &minX, -100, -1);
+		ImGui::SliderFloat("Maxmimum X", &maxX, 1, 100);
+		ImGui::SliderFloat("Minimum Y", &minY, -100, -1);
+		ImGui::SliderFloat("Maxmimum Y", &maxY, 1, 100);
 		ImGui::Text("Camera Position: %s", glm::to_string(camera.Position).c_str());
 		if (ImGui::Button("Render")) {
 			glDeleteVertexArrays(1, &VAO);
@@ -293,7 +295,6 @@ int main() {
 		}
 
 		ImGui::Text("%.1f FPS", io.Framerate);
-
 		ImGui::End();
 
 		ImGui::Render();
