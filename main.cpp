@@ -118,8 +118,7 @@ void generate_vertices(float minX, float maxX, float minY, float maxY, int sampl
 		for (float y = minY; y <= maxY; y += stepY) {
 			symbol_table.get_variable("x")->ref() = x;
 			symbol_table.get_variable("y")->ref() = y;
-			float z = expr.value();
-			points_vec.push_back(glm::vec3(x, z, y));
+			points_vec.push_back(glm::vec3(x, expr.value(), y));
 		}
 	}
 }
