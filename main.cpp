@@ -1,19 +1,9 @@
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-#include "imgui_internal.h"
-
+#include "equation.hpp"
 #include "shader.hpp"
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include "camera.hpp"
 #include "exprtk.hpp"
-#include <chrono>
-
-float minX = -25.0, maxX = 25.0, minY = minX, maxY = maxX;
-int samplesX = 1000, samplesY = samplesX;
-
-std::string equation;
 
 const unsigned int SCR_WIDTH = 1280;
 const unsigned int SCR_HEIGHT = 720;
@@ -30,6 +20,7 @@ float lastFrame = 0.0f;
 
 GLuint VAO, VBO;
 std::vector<glm::vec3> points_vec;
+std::vector<Equation> equations;
 
 void processInput(GLFWwindow* window) {
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -91,14 +82,14 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
 	glViewport(0, 0, width, height);
 }
-
-void generate_vertices(float minX, float maxX, float minY, float maxY, int samplesX, int samplesY, std::string expression) {
+// float minX, float maxX, float minY, float maxY, int samplesX, int samplesY, std::string expression
+void generate_vertices(Equation& equation) {
 	exprtk::symbol_table<float> symbol_table;
 	exprtk::expression<float> expr;
 	exprtk::parser<float> parser;
 
-	float stepX = (maxX - minX) / samplesX;
-	float stepY = (maxY - minY) / samplesY;
+	float stepX = (equation.max_x - equation.min_x) / equation.sample_size;
+	float stepY = (equation.max_y - equation.min_y) / equation.sample_size;
 
 	const double e = 2.71828182845904523536028747135266249775724709369996;
 	const double pi = 3.14159265358979323846264338327950288419716939937510;
@@ -113,24 +104,38 @@ void generate_vertices(float minX, float maxX, float minY, float maxY, int sampl
 	symbol_table.add_variable("y", y);
 
 	expr.register_symbol_table(symbol_table);
-	parser.compile(expression, expr);
+	parser.compile(equation.buf, expr);
 
 	symbol_table.get_variable("x")->ref() = x;
 	symbol_table.get_variable("y")->ref() = y;
 
-	for (x = minX; x <= maxX; x += stepX) {
-		for (y = minY; y <= maxY; y += stepY) {
-			points_vec.push_back(glm::vec3(x, expr.value(), y));
+	if (equation.is_3d) {
+		for (x = equation.min_x; x <= equation.max_x; x += stepX) {
+			for (y = equation.min_y; y <= equation.max_y; y += stepY) {
+				equation.points_vec_equation.push_back(glm::vec3(x, expr.value(), y));
+				equation.points_vec_equation.push_back(glm::make_vec3(equation.data));
+			}
+		}
+	}
+	else if(equation.is_3d == false) {
+		for (x = equation.min_x; x <= equation.max_x; x += stepX) {
+			for (y = equation.min_y; y <= equation.max_y; y += stepY) {
+				equation.points_vec_equation.push_back(glm::vec3(x, expr.value(), 0));
+				equation.points_vec_equation.push_back(glm::make_vec3(equation.data));
+			}
 		}
 	}
 }
 
-void rerender(std::string expression) {
-	equation = expression;
-	points_vec.clear();
-	
-	generate_vertices(minX, maxX, minY, maxY, samplesX, samplesY, expression);
+void rerender(Shader& shader) {
+	glDeleteVertexArrays(1, &VAO);
+	glDeleteBuffers(1, &VBO);
 
+	points_vec.clear();
+
+	for (auto& equation : equations) {
+		points_vec.insert(points_vec.begin(), equation.points_vec_equation.begin(), equation.points_vec_equation.end());
+	}
 	glm::vec3* new_points = points_vec.data();
 
 	glGenVertexArrays(1, &VAO);
@@ -138,8 +143,56 @@ void rerender(std::string expression) {
 	glBindVertexArray(VAO);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	glBufferData(GL_ARRAY_BUFFER, points_vec.size() * sizeof(glm::vec3), new_points, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+}
+
+void remove_equation(int index) {
+	equations.erase(equations.begin() + index);
+}
+
+void draw_equation_input(Equation& equation, Shader& shader, size_t index) {
+	ImGui::InputText("Equation", equation.buf, sizeof(equation.buf));
+	ImGui::ColorEdit3("Colour", equation.data);
+	ImGui::SliderInt("Sample Size", &equation.sample_size, 1, 10000);
+	ImGui::SliderFloat("Minimum X", &equation.min_x, -100, -0);
+	ImGui::SliderFloat("Maximum X", &equation.max_x, 1, 100);
+	ImGui::SliderFloat("Minimum Y", &equation.min_y, -100, -0);
+	ImGui::SliderFloat("Maximum Y", &equation.max_y, 1, 100);
+	ImGui::Checkbox("Toggle 3D", &equation.is_3d);
+	if (ImGui::Button("Remove Equation")) {
+		equation.points_vec_equation.clear();
+
+		remove_equation(index);
+
+		generate_vertices(equation);
+		rerender(shader);
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Render")) {
+		equation.points_vec_equation.clear();
+
+		generate_vertices(equation);
+		rerender(shader);
+	}
+}
+
+void draw_equations(Shader& shader) {
+	for (size_t i = 0; i < equations.size(); i++) {
+		ImGui::PushID(static_cast<int>(i));
+		draw_equation_input(equations[i], shader, i);
+		
+		ImGui::PopID();
+		ImGui::Separator();
+	}
+}
+
+void add_equation() {
+	Equation new_equation;
+
+	equations.push_back(new_equation);
 }
 
 int main() {
@@ -209,7 +262,8 @@ int main() {
 	ImGui_ImplOpenGL3_Init("#version 330");
 
 	float data[] = {1.0, 0.5, 0.2};
-	char buf[256] = "";
+	Equation first_equation;
+	equations.push_back(first_equation);
 
 	while (!glfwWindowShouldClose(window)) {
 		float currentFrame = static_cast<float>(glfwGetTime());
@@ -243,57 +297,55 @@ int main() {
 		shader.setMat4("view", view);
 		glm::vec3 colour = glm::make_vec3(data);
 		shader.setVec3("color", colour);
-		glBindVertexArray(VAO);
-		glDrawArrays(GL_POINTS, 0, points_vec.size());
 
+		shader.setBool("use_line", true);
 		shader.setVec3("color", glm::vec3(1.0, 1.0, 1.0));
 		glBindVertexArray(VAO_lines);
 		glDrawArrays(GL_LINES, 0, sizeof(grid) / sizeof(float) / 3);
+		shader.setBool("use_line", false);
 		
 		ImGui::Begin("Planar");
 
 		if (showControls) {
 			ImGui::OpenPopup("Controls");
+			ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+			ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5, 0.5));
 		}
 		if (ImGui::BeginPopupModal("Controls", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+			ImGui::SetItemDefaultFocus();
 			ImGui::Text("WASD to move");
 			ImGui::Text("Left Control: Down\nSpace: Up");
 			ImGui::Text("Q: rotate left\nE: rotate right");
 			ImGui::Text("`: toggle input");
+			ImGui::Text("Escape: close program");
 			ImGui::Separator();
 			if (ImGui::Button("Close")) {
 				showControls = !showControls;
 				mouseFocusGLFW = true;
 				ImGui::CloseCurrentPopup();
 			}
+			ImGui::Text("Vertex density might negatively effect performance. Adjust sample size accordingly.");
+			ImGui::Text("Be sure to change the colour when working with multiple equations.");
+
 			ImGui::EndPopup();
 		}
 
-		ImGui::Checkbox("Toggle Input", &mouseFocusGLFW);
-		ImGui::InputText("Equation", buf, 256);
-		ImGui::ColorEdit4("Colour", data);
-		ImGui::SliderInt("Sample Size", &samplesX, 1, 100000);
-		ImGui::SliderFloat("Minimum X", &minX, -100, -1);
-		ImGui::SliderFloat("Maxmimum X", &maxX, 1, 100);
-		ImGui::SliderFloat("Minimum Y", &minY, -100, -1);
-		ImGui::SliderFloat("Maxmimum Y", &maxY, 1, 100);
+		draw_equations(shader);
+
+		if (equations.size() >= 1) {
+			for (auto& equation : equations) {
+				glm::vec3 colour = glm::make_vec3(equation.data);
+				shader.setVec3("color", colour);
+			}
+		}
+
+		glBindVertexArray(VAO);
+		glDrawArrays(GL_POINTS, 0, points_vec.size());
+
+		if (ImGui::Button("Add Equation")) {
+			add_equation();
+		}
 		ImGui::Text("Camera Position: %s", glm::to_string(camera.Position).c_str());
-		if (ImGui::Button("Render")) {
-			glDeleteVertexArrays(1, &VAO);
-			glDeleteBuffers(1, &VBO);
-
-			rerender(equation);
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Render New Equation")) {
-			equation = buf;
-
-			glDeleteVertexArrays(1, &VAO);
-			glDeleteBuffers(1, &VBO);
-
-			rerender(equation);
-		}
-
 		ImGui::Text("%.1f FPS", io.Framerate);
 		ImGui::End();
 
