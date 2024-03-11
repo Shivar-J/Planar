@@ -5,10 +5,10 @@ Planar is a three dimensional graph visualizer. Made using OpenGL. Features the 
 ![](https://github.com/Shivar-J/Planar/blob/main/GIFs/3DVisualizer_rev1MxdvPD.png)
 <br />The 2D portion of $sin(x)+cos(y)$ shows the value range for all of the 3D portion of $sin(x)+cos(y)$.
 
-## $sin(x)+cos(y)$ in red alongside $cos(x)+sin(y)$ in blue
+## $sin(x)+cos(y)$ (red) alongside $cos(x)+sin(y)$ (blue)
 ![](https://github.com/Shivar-J/Planar/blob/main/GIFs/3DVisualizer_wx3MBAZMqW.png)
 
-## $x$ in blue, $sin(x)$ in red, and $cos(x)$ in green
+## $x$ (blue) alongside $sin(x)$ (red) and $cos(x)$ (green)
 ![](https://github.com/Shivar-J/Planar/blob/main/GIFs/3DVisualizer_0Qqxgd0pES.png)
 
 ## Older versions of Planar
