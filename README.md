@@ -8,6 +8,10 @@ Planar is a three dimensional graph visualizer. Made using OpenGL. Features the 
 ## $sin(x)+cos(y)$ (red) alongside $cos(x)+sin(y)$ (blue)
 ![](https://github.com/Shivar-J/Planar/blob/main/GIFs/3DVisualizer_wx3MBAZMqW.png)
 
+## $sin(x)$ (red), $cos(x)$ (blue), $tan(x)$ (green), $csc(x)$ (pink), $sec(x)$ (aqua), $cot(x)$ (yellow)
+![](https://github.com/Shivar-J/Planar/blob/main/GIFs/Planar_PJPrIw2tiv.png)
+<br />Each function has a sample size of $5000\cdot5000$, which adds up to around $150000000$ vertices!
+
 ## $x$ (blue) alongside $sin(x)$ (red) and $cos(x)$ (green)
 ![](https://github.com/Shivar-J/Planar/blob/main/GIFs/3DVisualizer_0Qqxgd0pES.png)
 
