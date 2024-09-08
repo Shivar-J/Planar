@@ -18,6 +18,7 @@ struct Equation {
 	float max_y = 25.0;
 	std::vector<glm::vec3> points_vec_equation;
 	bool is_3d = true;
+	bool is_visible = true;
 };
 
 struct Point {

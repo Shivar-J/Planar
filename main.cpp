@@ -16,6 +16,9 @@ float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 bool mouseFocusGLFW = false;
 bool showControls = true;
+bool use_heatmap = false;
+float min_height = FLT_MAX;
+float max_height = -FLT_MAX;
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -51,6 +54,8 @@ void processInput(GLFWwindow* window) {
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
 	if (glfwGetKey(window, GLFW_KEY_GRAVE_ACCENT) == GLFW_PRESS)
 		mouseFocusGLFW = !mouseFocusGLFW;
+	if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS)
+		use_heatmap = !use_heatmap;
 }
 
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
@@ -112,10 +117,17 @@ void generate_vertices(Equation& equation) {
 	symbol_table.get_variable("x")->ref() = x;
 	symbol_table.get_variable("y")->ref() = y;
 
+	min_height = FLT_MAX;
+	max_height = -FLT_MAX;
+
 	if (equation.is_3d) {
 		for (x = equation.min_x; x <= equation.max_x; x += stepX) {
 			for (y = equation.min_y; y <= equation.max_y; y += stepY) {
-				equation.points_vec_equation.push_back(glm::vec3(x, expr.value(), y));
+				float height = expr.value();
+				min_height = std::min(min_height, height);
+				max_height = std::max(max_height, height);
+
+				equation.points_vec_equation.push_back(glm::vec3(x, height, y));
 				equation.points_vec_equation.push_back(glm::make_vec3(equation.data));
 			}
 		}
@@ -123,6 +135,9 @@ void generate_vertices(Equation& equation) {
 	else if(equation.is_3d == false) {
 		for (x = equation.min_x; x <= equation.max_x; x += stepX) {
 			for (y = equation.min_y; y <= equation.max_y; y += stepY) {
+				min_height = std::min(min_height, expr.value());
+				max_height = std::max(max_height, expr.value());
+
 				equation.points_vec_equation.push_back(glm::vec3(x, expr.value(), 0));
 				equation.points_vec_equation.push_back(glm::make_vec3(equation.data));
 			}
@@ -137,7 +152,9 @@ void rerender(Shader& shader) {
 	points_vec.clear();
 
 	for (auto& equation : equations) {
-		points_vec.insert(points_vec.begin(), equation.points_vec_equation.begin(), equation.points_vec_equation.end());
+		if (equation.is_visible) {
+			points_vec.insert(points_vec.begin(), equation.points_vec_equation.begin(), equation.points_vec_equation.end());
+		}
 	}
 
 	for (auto& point : points) {
@@ -151,8 +168,10 @@ void rerender(Shader& shader) {
 	glBindVertexArray(VAO);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	glBufferData(GL_ARRAY_BUFFER, points_vec.size() * sizeof(glm::vec3), new_points, GL_STATIC_DRAW);
+
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(0);
+
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
 	glEnableVertexAttribArray(1);
 }
@@ -173,7 +192,9 @@ void draw_equation_input(Equation& equation, Shader& shader, size_t index) {
 	ImGui::SliderFloat("Maximum X", &equation.max_x, 1, 100);
 	ImGui::SliderFloat("Minimum Y", &equation.min_y, -100, -0);
 	ImGui::SliderFloat("Maximum Y", &equation.max_y, 1, 100);
+	bool visibility_toggle = ImGui::Checkbox("Toggle Visibility", &equation.is_visible);
 	ImGui::Checkbox("Toggle 3D", &equation.is_3d);
+	ImGui::Checkbox("Toggle Heatmap", &use_heatmap);
 	if (ImGui::Button("Remove Equation")) {
 		equation.points_vec_equation.clear();
 
@@ -184,6 +205,12 @@ void draw_equation_input(Equation& equation, Shader& shader, size_t index) {
 	}
 	ImGui::SameLine();
 	if (ImGui::Button("Render")) {
+		equation.points_vec_equation.clear();
+
+		generate_vertices(equation);
+		rerender(shader);
+	}
+	if (visibility_toggle) {
 		equation.points_vec_equation.clear();
 
 		generate_vertices(equation);
@@ -251,7 +278,6 @@ void run_updater(const std::string& updater_exe, const std::string& exe_path) {
 	std::string command = updater_exe + " " + exe_path;
 	std::system(command.c_str());
 }
-
 
 int main() {
 	ShowWindow(GetConsoleWindow(), SW_HIDE);
@@ -363,11 +389,15 @@ int main() {
 		glm::vec3 colour = glm::make_vec3(data);
 		shader.setVec3("color", colour);
 
+		shader.setFloat("min_height", min_height);
+		shader.setFloat("max_height", max_height);
+
 		shader.setBool("use_line", true);
 		shader.setVec3("color", glm::vec3(1.0, 1.0, 1.0));
 		glBindVertexArray(VAO_lines);
 		glDrawArrays(GL_LINES, 0, sizeof(grid) / sizeof(float) / 3);
 		shader.setBool("use_line", false);
+		shader.setBool("use_heatmap", use_heatmap);
 		
 		ImGui::Begin("Planar");
 
@@ -398,6 +428,7 @@ int main() {
 		draw_equations(shader);
 		draw_points(shader);
 
+
 		if (equations.size() >= 1) {
 			for (auto& equation : equations) {
 				glm::vec3 colour = glm::make_vec3(equation.data);
@@ -417,6 +448,8 @@ int main() {
 		}
 		ImGui::Text("Camera Position: %s", glm::to_string(camera.Position).c_str());
 		ImGui::Text("%.1f FPS", io.Framerate);
+		ImGui::Text("Min Height: %.2f", min_height);
+		ImGui::Text("Max Height: %.2f", max_height);
 		ImGui::End();
 
 		ImGui::Render();

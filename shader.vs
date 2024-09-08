@@ -7,10 +7,12 @@ uniform mat4 view;
 uniform mat4 projection;
 
 out vec3 ourColor;
+out float heightY;
 
 void main()
 {
-    gl_Position = projection * view * model * vec4(aPos, 1.0f);
-    gl_PointSize = 10.0;
+    vec4 worldPos = model * vec4(aPos, 1.0);
+    heightY = worldPos.y;
+    gl_Position = projection * view * worldPos;
     ourColor = aColor;
 }
