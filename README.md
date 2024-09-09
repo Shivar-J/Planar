@@ -13,7 +13,7 @@ Planar is a real-time mathematical visualization tool made in openGL that allows
 ## $\frac{1}{x^2 + y^2}$
 ![](https://github.com/Shivar-J/Planar/blob/main/Demo/Planar_bCPEu1PcXS.png)
 
-## $1-\abs(x+y)-\abs(y-x)$
+## $1-|x+y|-|y-x|$
 ![](https://github.com/Shivar-J/Planar/blob/main/Demo/Planar_ip03Qv4Ntb.png)
 
 ## $\sin(x) + \cos(y)$
