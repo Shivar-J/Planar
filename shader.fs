@@ -5,6 +5,7 @@ in float heightY;
 
 uniform vec3 color;
 uniform bool use_line;
+uniform bool use_gridline;
 uniform bool use_heatmap;
 uniform float min_height;
 uniform float max_height;
@@ -27,8 +28,11 @@ vec3 computeColor(float value)
 void main()
 {
     if (use_line) {
-        FragColor = vec4(color, 1.0);
-    } 
+        FragColor = vec4(color, 0.1);
+    }
+    else if (use_gridline) {
+        FragColor = vec4(color, 1);
+    }
     else if (use_heatmap) {
         float normalizedHeight = (heightY - min_height) / (max_height - min_height);
         normalizedHeight = clamp(normalizedHeight, 0.0, 1.0);
