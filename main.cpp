@@ -6,6 +6,7 @@
 #include "camera.hpp"
 #include "exprtk.hpp"
 #include "updater.hpp"
+#include <cstring>
 
 unsigned int SCR_WIDTH = 1280;
 unsigned int SCR_HEIGHT = 720;
@@ -26,6 +27,10 @@ float max_x_val = 100;
 float min_y_val = -100;
 float max_y_val = 100;
 float max_view_distance = 250.0f;
+float point_size = 1.0f;
+
+char import_filepath[256] = "";
+char export_filepath[256] = "";
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -103,20 +108,22 @@ void generate_vertices(Equation& equation) {
 	exprtk::expression<float> expr;
 	exprtk::parser<float> parser;
 
+	float spacing_tolerance = 0.001f;
 	float stepX = (equation.max_x - equation.min_x) / equation.sample_size;
 	float stepY = (equation.max_y - equation.min_y) / equation.sample_size;
 
 	const double e = 2.71828182845904523536028747135266249775724709369996;
 	const double pi = 3.14159265358979323846264338327950288419716939937510;
 
-	float x, y;
+	float x, y, z;
 
 	symbol_table.add_constant("e", e);
 
 	symbol_table.add_pi();
-	
+
 	symbol_table.add_variable("x", x);
 	symbol_table.add_variable("y", y);
+	symbol_table.add_variable("z", z);
 
 	expr.register_symbol_table(symbol_table);
 	parser.compile(equation.buf, expr);
@@ -131,6 +138,7 @@ void generate_vertices(Equation& equation) {
 		for (x = equation.min_x; x <= equation.max_x; x += stepX) {
 			for (y = equation.min_y; y <= equation.max_y; y += stepY) {
 				float height = expr.value();
+
 				min_height = std::min(min_height, height);
 				max_height = std::max(max_height, height);
 
@@ -139,7 +147,7 @@ void generate_vertices(Equation& equation) {
 			}
 		}
 	}
-	else if(equation.is_3d == false) {
+	else if (equation.is_3d == false) {
 		for (x = equation.min_x; x <= equation.max_x; x += stepX) {
 			for (y = equation.min_y; y <= equation.max_y; y += stepY) {
 				min_height = std::min(min_height, expr.value());
@@ -286,6 +294,84 @@ void run_updater(const std::string& updater_exe, const std::string& exe_path) {
 	std::system(command.c_str());
 }
 
+std::string remove_quotes(const std::string& str) {
+	std::string result;
+	result.reserve(str.size());
+
+	for (char ch : str) {
+		if (ch != '"' && ch != '\'')
+			result += ch;
+	}
+
+	return result;
+}
+
+void import_data(const std::string& filename) {
+	std::ifstream infile(filename);
+
+	if (!infile.is_open()) {
+		return;
+	}
+
+	std::string line;
+	
+	while (std::getline(infile, line)) {
+		std::istringstream iss(line);
+		std::string type;
+		iss >> type;
+
+		if (type == "Equation") {
+			Equation eq;
+			iss >> eq.data[0] >> eq.data[1] >> eq.data[2];
+			iss >> eq.sample_size;
+			iss >> eq.min_x >> eq.max_x >> eq.min_y >> eq.max_y;
+			iss >> eq.is_visible >> eq.is_3d;
+
+			std::string buf;
+			std::getline(iss, buf, '\n');
+			buf = remove_quotes(buf);
+			std::strncpy(eq.buf, buf.c_str(), sizeof(eq.buf) - 1);
+			eq.buf[sizeof(eq.buf) - 1] = '\0';
+			
+			equations.push_back(eq);
+		}
+		else if (type == "Point") {
+			Point pt;
+			iss >> pt.point_buf[0] >> pt.point_buf[1] >> pt.point_buf[2];
+			iss >> pt.data[0] >> pt.data[1] >> pt.data[2];
+			points.push_back(pt);
+		}
+	}
+
+	infile.close();
+}
+
+void export_data(const std::string& filename) {
+	std::string filepath = filename + ".mat";
+	std::ofstream outfile(filepath);
+
+	if (!outfile.is_open()) {
+		return;
+	}
+
+	for (const auto& eq : equations) {
+		outfile << "Equation \""
+			<< eq.data[0] << " " << eq.data[1] << " " << eq.data[2] << " "
+			<< eq.sample_size << " "
+			<< eq.min_x << " " << eq.max_x << " "
+			<< eq.min_y << " " << eq.max_y << " "
+			<< eq.is_visible << " " << eq.is_3d
+			<< eq.buf << "\" " << "\n";
+	}
+
+	for (const auto& pt : points) {
+		outfile << "Point " << pt.point_buf[0] << " " << pt.point_buf[1] << " " << pt.point_buf[2] << " "
+			<< pt.data[0] << " " << pt.data[1] << " " << pt.data[2] << "\n";
+	}
+
+	outfile.close();
+}
+
 int main() {
 	ShowWindow(GetConsoleWindow(), SW_HIDE);
 
@@ -324,6 +410,7 @@ int main() {
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
 
 	Shader shader("shader.vs", "shader.fs");
 
@@ -429,7 +516,7 @@ int main() {
 	glEnableVertexAttribArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
-	
+
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -438,7 +525,7 @@ int main() {
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 330");
 
-	float data[] = {1.0, 0.5, 0.2};
+	float data[] = { 1.0, 0.5, 0.2 };
 	Equation first_equation;
 	equations.push_back(first_equation);
 
@@ -455,7 +542,7 @@ int main() {
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
-		
+
 		if (!mouseFocusGLFW) {
 			io.WantCaptureMouse = true;
 			io.WantCaptureKeyboard = true;
@@ -478,6 +565,7 @@ int main() {
 
 		shader.setFloat("min_height", min_height);
 		shader.setFloat("max_height", max_height);
+		shader.setFloat("point_size", point_size);
 
 		if (show_gridlines) {
 			shader.setBool("use_gridline", true);
@@ -487,7 +575,7 @@ int main() {
 			glBindVertexArray(0);
 			shader.setBool("use_gridline", false);
 		}
-		
+
 		if (show_lines) {
 			shader.setBool("use_line", true);
 			shader.setVec3("color", glm::vec3(1.0, 1.0, 1.0));
@@ -496,10 +584,10 @@ int main() {
 			glBindVertexArray(0);
 			shader.setBool("use_line", false);
 		}
-		
+
 		glDepthMask(GL_TRUE);
 		shader.setBool("use_heatmap", use_heatmap);
-		
+
 		ImGui::Begin("Planar");
 
 		if (ImGui::BeginMainMenuBar()) {
@@ -511,7 +599,15 @@ int main() {
 				ImGui::InputFloat("Change Maximum X value", &max_x_val);
 				ImGui::InputFloat("Change Minimum Y value", &min_y_val);
 				ImGui::InputFloat("Change Maximum Y value", &max_y_val);
-
+				ImGui::InputFloat("Set Point Size", &point_size);
+				ImGui::InputText("Filepath for Import (don't forget .mat extension)", import_filepath, sizeof(import_filepath));
+				if (ImGui::Button("Import Equations")) {
+					import_data(import_filepath);
+				}
+				ImGui::InputText("Filename for Export (no extension required)", export_filepath, sizeof(export_filepath));
+				if (ImGui::Button("Export Equations")) {
+					export_data(export_filepath);
+				}
 				ImGui::EndMenu();
 			}
 			ImGui::EndMainMenuBar();
