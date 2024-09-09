@@ -17,8 +17,15 @@ bool firstMouse = true;
 bool mouseFocusGLFW = false;
 bool showControls = true;
 bool use_heatmap = false;
+bool show_gridlines = true;
+bool show_lines = true;
 float min_height = FLT_MAX;
 float max_height = -FLT_MAX;
+float min_x_val = -100;
+float max_x_val = 100;
+float min_y_val = -100;
+float max_y_val = 100;
+float max_view_distance = 250.0f;
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -188,10 +195,10 @@ void draw_equation_input(Equation& equation, Shader& shader, size_t index) {
 	ImGui::InputText("Equation", equation.buf, sizeof(equation.buf));
 	ImGui::ColorEdit3("Colour", equation.data);
 	ImGui::SliderInt("Sample Size", &equation.sample_size, 1, 10000);
-	ImGui::SliderFloat("Minimum X", &equation.min_x, -100, -0);
-	ImGui::SliderFloat("Maximum X", &equation.max_x, 1, 100);
-	ImGui::SliderFloat("Minimum Y", &equation.min_y, -100, -0);
-	ImGui::SliderFloat("Maximum Y", &equation.max_y, 1, 100);
+	ImGui::SliderFloat("Minimum X", &equation.min_x, min_x_val, -0);
+	ImGui::SliderFloat("Maximum X", &equation.max_x, 1, max_x_val);
+	ImGui::SliderFloat("Minimum Y", &equation.min_y, min_y_val, -0);
+	ImGui::SliderFloat("Maximum Y", &equation.max_y, 1, max_y_val);
 	bool visibility_toggle = ImGui::Checkbox("Toggle Visibility", &equation.is_visible);
 	ImGui::Checkbox("Toggle 3D", &equation.is_3d);
 	ImGui::Checkbox("Toggle Heatmap", &use_heatmap);
@@ -315,6 +322,8 @@ int main() {
 	}
 
 	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	Shader shader("shader.vs", "shader.fs");
 
@@ -323,7 +332,83 @@ int main() {
 	glm::mat4 model = glm::mat4(1.0f);
 	shader.setMat4("model", model);
 
-	float grid[] = {
+	const float grid_size = 1000.0f;
+	const float grid_spacing = 1.0f;
+
+	int num_lines = static_cast<int>(grid_size / grid_spacing) * 2 + 1;
+	int num_vertices = num_lines * 12;
+
+	std::vector<float> grid_vertices;
+	grid_vertices.reserve(num_vertices * 3);
+
+	for (float i = -grid_size; i <= grid_size; i += grid_spacing) {
+		grid_vertices.push_back(-grid_size);
+		grid_vertices.push_back(0.0f);
+		grid_vertices.push_back(i);
+		grid_vertices.push_back(grid_size);
+		grid_vertices.push_back(0.0f);
+		grid_vertices.push_back(i);
+	}
+
+	for (float i = -grid_size; i <= grid_size; i += grid_spacing) {
+		grid_vertices.push_back(i);
+		grid_vertices.push_back(0.0f);
+		grid_vertices.push_back(-grid_size);
+		grid_vertices.push_back(i);
+		grid_vertices.push_back(0.0f);
+		grid_vertices.push_back(grid_size);
+	}
+
+	for (float i = -grid_size; i <= grid_size; i += grid_spacing) {
+		grid_vertices.push_back(0.0f);
+		grid_vertices.push_back(-grid_size);
+		grid_vertices.push_back(i);
+		grid_vertices.push_back(0.0f);
+		grid_vertices.push_back(grid_size);
+		grid_vertices.push_back(i);
+	}
+
+	for (float i = -grid_size; i <= grid_size; i += grid_spacing) {
+		grid_vertices.push_back(0.0f);
+		grid_vertices.push_back(i);
+		grid_vertices.push_back(grid_size);
+		grid_vertices.push_back(0.0f);
+		grid_vertices.push_back(i);
+		grid_vertices.push_back(-grid_size);
+	}
+
+	for (float i = -grid_size; i <= grid_size; i += grid_spacing) {
+		grid_vertices.push_back(grid_size);
+		grid_vertices.push_back(i);
+		grid_vertices.push_back(0.0f);
+		grid_vertices.push_back(-grid_size);
+		grid_vertices.push_back(i);
+		grid_vertices.push_back(0.0f);
+	}
+
+	for (float i = -grid_size; i <= grid_size; i += grid_spacing) {
+		grid_vertices.push_back(i);
+		grid_vertices.push_back(grid_size);
+		grid_vertices.push_back(0.0f);
+		grid_vertices.push_back(i);
+		grid_vertices.push_back(-grid_size);
+		grid_vertices.push_back(0.0f);
+	}
+
+	GLuint VAO_grid, VBO_grid;
+	glGenVertexArrays(1, &VAO_grid);
+	glGenBuffers(1, &VBO_grid);
+
+	glBindVertexArray(VAO_grid);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO_grid);
+	glBufferData(GL_ARRAY_BUFFER, grid_vertices.size() * sizeof(float), grid_vertices.data(), GL_STATIC_DRAW);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
+	float gridlines[] = {
 		-1000.0f,  0.0f, 0.0f,
 		 1000.0f,  0.0f, 0.0f,
 
@@ -339,11 +424,12 @@ int main() {
 	glGenBuffers(1, &VBO_lines);
 	glBindVertexArray(VAO_lines);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO_lines);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(grid), grid, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(gridlines), gridlines, GL_STATIC_DRAW);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
+	
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -382,7 +468,8 @@ int main() {
 		}
 
 		shader.use();
-		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+		glDepthMask(GL_FALSE);
+		glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, max_view_distance);
 		shader.setMat4("projection", projection);
 		glm::mat4 view = camera.GetViewMatrix();
 		shader.setMat4("view", view);
@@ -392,14 +479,43 @@ int main() {
 		shader.setFloat("min_height", min_height);
 		shader.setFloat("max_height", max_height);
 
-		shader.setBool("use_line", true);
-		shader.setVec3("color", glm::vec3(1.0, 1.0, 1.0));
-		glBindVertexArray(VAO_lines);
-		glDrawArrays(GL_LINES, 0, sizeof(grid) / sizeof(float) / 3);
-		shader.setBool("use_line", false);
+		if (show_gridlines) {
+			shader.setBool("use_gridline", true);
+			shader.setVec3("color", glm::vec3(1.0, 1.0, 1.0));
+			glBindVertexArray(VAO_lines);
+			glDrawArrays(GL_LINES, 0, sizeof(gridlines) / sizeof(float) / 3);
+			glBindVertexArray(0);
+			shader.setBool("use_gridline", false);
+		}
+		
+		if (show_lines) {
+			shader.setBool("use_line", true);
+			shader.setVec3("color", glm::vec3(1.0, 1.0, 1.0));
+			glBindVertexArray(VAO_grid);
+			glDrawArrays(GL_LINES, 0, num_vertices);
+			glBindVertexArray(0);
+			shader.setBool("use_line", false);
+		}
+		
+		glDepthMask(GL_TRUE);
 		shader.setBool("use_heatmap", use_heatmap);
 		
 		ImGui::Begin("Planar");
+
+		if (ImGui::BeginMainMenuBar()) {
+			if (ImGui::BeginMenu("Options")) {
+				ImGui::InputFloat("Change Max View Distance", &max_view_distance);
+				ImGui::Checkbox("Show Axes", &show_gridlines);
+				ImGui::Checkbox("Show Grid Lines", &show_lines);
+				ImGui::InputFloat("Change Minimum X value", &min_x_val);
+				ImGui::InputFloat("Change Maximum X value", &max_x_val);
+				ImGui::InputFloat("Change Minimum Y value", &min_y_val);
+				ImGui::InputFloat("Change Maximum Y value", &max_y_val);
+
+				ImGui::EndMenu();
+			}
+			ImGui::EndMainMenuBar();
+		}
 
 		if (showControls) {
 			ImGui::OpenPopup("Controls");
@@ -411,7 +527,8 @@ int main() {
 			ImGui::Text("WASD to move");
 			ImGui::Text("Left Control: Down\nSpace: Up");
 			ImGui::Text("Q: rotate left\nE: rotate right");
-			ImGui::Text("`: toggle input");
+			ImGui::Text("`: toggle keyboard and mouse input");
+			ImGui::Text("H: toggle heatmap");
 			ImGui::Text("Escape: close program");
 			ImGui::Separator();
 			if (ImGui::Button("Close")) {
@@ -467,6 +584,8 @@ int main() {
 	glDeleteBuffers(1, &VBO);
 	glDeleteVertexArrays(1, &VAO_lines);
 	glDeleteBuffers(1, &VBO_lines);
+	glDeleteVertexArrays(1, &VAO_grid);
+	glDeleteBuffers(1, &VBO_grid);
 	glfwTerminate();
 	return 0;
 }
