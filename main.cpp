@@ -1,4 +1,5 @@
 #define _CRT_SECURE_NO_WARNINGS
+#define STB_IMAGE_IMPLEMENTATION
 #include "equation.hpp"
 #include "shader.hpp"
 #include <glad/glad.h>
@@ -7,6 +8,7 @@
 #include "exprtk.hpp"
 #include "updater.hpp"
 #include <cstring>
+#include "stb_image.h"
 
 unsigned int SCR_WIDTH = 1280;
 unsigned int SCR_HEIGHT = 720;
@@ -393,6 +395,11 @@ int main() {
 		glfwTerminate();
 		return -1;
 	}
+
+	GLFWimage images[1];
+	images[0].pixels = stbi_load("planaricon.png", &images[0].width, &images[0].height, 0, 4);
+	glfwSetWindowIcon(window, 1, images);
+	stbi_image_free(images[0].pixels);
 
 	glfwMakeContextCurrent(window);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
