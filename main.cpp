@@ -139,12 +139,10 @@ void generate_vertices(Equation& equation) {
 	if (equation.is_3d) {
 		for (x = equation.min_x; x <= equation.max_x; x += stepX) {
 			for (y = equation.min_y; y <= equation.max_y; y += stepY) {
-				float height = expr.value();
+				min_height = std::min(min_height, expr.value());
+				max_height = std::max(max_height, expr.value());
 
-				min_height = std::min(min_height, height);
-				max_height = std::max(max_height, height);
-
-				equation.points_vec_equation.push_back(glm::vec3(x, height, y));
+				equation.points_vec_equation.push_back(glm::vec3(x, expr.value(), y));
 				equation.points_vec_equation.push_back(glm::make_vec3(equation.data));
 			}
 		}
@@ -593,6 +591,7 @@ int main() {
 		}
 
 		glDepthMask(GL_TRUE);
+		
 		shader.setBool("use_heatmap", use_heatmap);
 
 		ImGui::Begin("Planar");

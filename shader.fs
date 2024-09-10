@@ -31,16 +31,16 @@ void main()
         FragColor = vec4(color, 0.1);
     }
     else if (use_gridline) {
-        FragColor = vec4(color, 1);
+        FragColor = vec4(color, 1.0);
     }
     else if (use_heatmap) {
         float normalizedHeight = (heightY - min_height) / (max_height - min_height);
         normalizedHeight = clamp(normalizedHeight, 0.0, 1.0);
-        vec3 color = computeColor(normalizedHeight);
+        vec3 heatmap_color = computeColor(normalizedHeight);
 
-        FragColor = vec4(color, 1.0);
+        FragColor = vec4(heatmap_color, 1.0);
     }
     else {
-        FragColor = vec4(color, 1.0);
+        FragColor = vec4(ourColor, 1.0);
     }
 }

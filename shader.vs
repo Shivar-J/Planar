@@ -12,9 +12,10 @@ out float heightY;
 
 void main()
 {
+    ourColor = aColor;
     gl_PointSize = point_size;
     vec4 worldPos = model * vec4(aPos, 1.0);
     heightY = worldPos.y;
     gl_Position = projection * view * worldPos;
-    ourColor = aColor;
+    
 }
