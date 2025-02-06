@@ -9,6 +9,7 @@ uniform bool use_gridline;
 uniform bool use_heatmap;
 uniform float min_height;
 uniform float max_height;
+uniform float point_opacity;
 
 vec3 computeColor(float value)
 {
@@ -38,9 +39,9 @@ void main()
         normalizedHeight = clamp(normalizedHeight, 0.0, 1.0);
         vec3 heatmap_color = computeColor(normalizedHeight);
 
-        FragColor = vec4(heatmap_color, 1.0);
+        FragColor = vec4(heatmap_color, point_opacity);
     }
     else {
-        FragColor = vec4(ourColor, 1.0);
+        FragColor = vec4(ourColor, point_opacity);
     }
 }

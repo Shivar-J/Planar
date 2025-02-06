@@ -21,6 +21,10 @@ struct Equation {
 	std::vector<glm::vec3> points_vec_equation;
 	bool is_3d = true;
 	bool is_visible = true;
+	float opacity = 1.0f;
+	bool is_mesh = false;
+	std::vector<unsigned int> indices;
+	float discontinuity_threshold = 10.0f;
 };
 
 struct Point {

@@ -30,6 +30,8 @@ float min_y_val = -100;
 float max_y_val = 100;
 float max_view_distance = 250.0f;
 float point_size = 1.0f;
+int max_depth = 6;
+double derivative_threshold = 5.0;
 
 char import_filepath[256] = "";
 char export_filepath[256] = "";
@@ -37,8 +39,9 @@ char export_filepath[256] = "";
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-GLuint VAO, VBO;
+GLuint VAO, VBO, EBO;
 std::vector<glm::vec3> points_vec;
+std::vector<unsigned int> indices_vec;
 std::vector<Equation> equations;
 std::vector<Point> points;
 
@@ -132,29 +135,116 @@ void generate_vertices(Equation& equation) {
 
 	symbol_table.get_variable("x")->ref() = x;
 	symbol_table.get_variable("y")->ref() = y;
+	symbol_table.get_variable("z")->ref() = z;
 
 	min_height = FLT_MAX;
 	max_height = -FLT_MAX;
 
-	if (equation.is_3d) {
-		for (x = equation.min_x; x <= equation.max_x; x += stepX) {
-			for (y = equation.min_y; y <= equation.max_y; y += stepY) {
-				min_height = std::min(min_height, expr.value());
-				max_height = std::max(max_height, expr.value());
+	double epsilon = 1e-6;
 
-				equation.points_vec_equation.push_back(glm::vec3(x, expr.value(), y));
-				equation.points_vec_equation.push_back(glm::make_vec3(equation.data));
+	auto adaptive_samples = [&](auto&& func, float min, float max) {
+		std::vector<float> samples;
+		std::function<void(float, float, float, float, int)> subdivide = [&](float x0, float x1, float y0, float y1, int depth) {
+			if (depth >= max_depth) {
+				samples.push_back(x0);
+				return;
+			}
+
+			const float x_mid = (x0 + x1) * 0.5f;
+			const float y_mid = func(x_mid);
+
+			const float dy_left = std::abs((y_mid - y0) / (x_mid - x0 + epsilon));
+			const float dy_right = std::abs((y1 - y_mid) / (x1 - x_mid + epsilon));
+
+			if (dy_left > derivative_threshold || dy_right > derivative_threshold) {
+				subdivide(x0, x_mid, y0, y_mid, depth + 1);
+				subdivide(x_mid, x1, y_mid, y1, depth + 1);
+			}
+			else {
+				samples.push_back(x0);
+			}
+			};
+		std::vector<float> base_x;
+		for (int i = 0; i < equation.sample_size; i++) {
+			base_x.push_back(min + (max - min) * (i / float(equation.sample_size - 1)));
+		}
+
+		for (size_t i = 0; i < base_x.size() - 1; i++) {
+			const float x0 = base_x[i];
+			const float x1 = base_x[i + 1];
+			subdivide(x0, x1, func(x0), func(x1), 0);
+		}
+
+		samples.push_back(max);
+		std::sort(samples.begin(), samples.end());
+		return samples;
+	};
+
+	auto safe_eval = [&](float x_val, float y_val = 0) {
+		try {
+			x = x_val;
+			y = equation.is_3d ? y_val : 0;
+			return expr.value();
+		}
+		catch (...) {
+			return NAN;
+		}
+	};
+
+	if (equation.is_3d) {
+		auto x_samples = adaptive_samples([&](float x) { return safe_eval(x, equation.min_y); }, equation.min_x, equation.max_x);
+		auto y_samples = adaptive_samples([&](float y) { return safe_eval(equation.min_x, y); }, equation.min_y, equation.max_y);
+
+		for (float x : x_samples) {
+			for (float y : y_samples) {
+				const float z = safe_eval(x, y);
+				if (!std::isnan(z)) {
+					equation.points_vec_equation.emplace_back(x, z, y);
+					equation.points_vec_equation.emplace_back(glm::make_vec3(equation.data));
+					min_height = std::min(min_height, z);
+					max_height = std::max(max_height, z);
+				}
+			}
+		}
+
+		if (equation.is_mesh) {
+			const int cols = x_samples.size();
+			const int rows = y_samples.size();
+
+			for (int y = 0; y < rows - 1; y++) {
+				for (int x = 0; x < cols - 1; x++) {
+					const int i0 = y * cols + x;
+					const int i1 = y * cols + (x + 1);
+					const int i2 = (y + 1) * cols + x;
+					const int i3 = (y + 1) * cols + (x + 1);
+
+					if (std::isnan(equation.points_vec_equation[i0].y) ||
+						std::isnan(equation.points_vec_equation[i1].y) ||
+						std::isnan(equation.points_vec_equation[i2].y) ||
+						std::isnan(equation.points_vec_equation[i3].y))
+						continue;
+					equation.indices.insert(equation.indices.end(), {
+						static_cast<unsigned int>(i0),
+						static_cast<unsigned int>(i1),
+						static_cast<unsigned int>(i2),
+						static_cast<unsigned int>(i1),
+						static_cast<unsigned int>(i3),
+						static_cast<unsigned int>(i2),
+						});
+				}
 			}
 		}
 	}
-	else if (equation.is_3d == false) {
-		for (x = equation.min_x; x <= equation.max_x; x += stepX) {
-			for (y = equation.min_y; y <= equation.max_y; y += stepY) {
-				min_height = std::min(min_height, expr.value());
-				max_height = std::max(max_height, expr.value());
+	else {
+		auto x_samples = adaptive_samples([&](float x) { return safe_eval(x, equation.min_y); }, equation.min_x, equation.max_x);
 
-				equation.points_vec_equation.push_back(glm::vec3(x, expr.value(), 0));
-				equation.points_vec_equation.push_back(glm::make_vec3(equation.data));
+		for (float x : x_samples) {
+			const float y = safe_eval(x);
+			if (!std::isnan(y)) {
+				equation.points_vec_equation.emplace_back(x, y, 0);
+				equation.points_vec_equation.emplace_back(glm::make_vec3(equation.data));
+				min_height = std::min(min_height, y);
+				max_height = std::max(max_height, y);
 			}
 		}
 	}
@@ -163,13 +253,23 @@ void generate_vertices(Equation& equation) {
 void rerender(Shader& shader) {
 	glDeleteVertexArrays(1, &VAO);
 	glDeleteBuffers(1, &VBO);
+	glDeleteBuffers(1, &EBO);
 
 	points_vec.clear();
+	indices_vec.clear();
 
+	size_t vertex_offset = 0;
 	for (auto& equation : equations) {
 		if (equation.is_visible) {
 			points_vec.insert(points_vec.begin(), equation.points_vec_equation.begin(), equation.points_vec_equation.end());
 		}
+
+		if (equation.is_mesh) {
+			for (auto& index : equation.indices) {
+				indices_vec.push_back(index + vertex_offset);
+			}
+		}
+		vertex_offset += equation.points_vec_equation.size();
 	}
 
 	for (auto& point : points) {
@@ -180,9 +280,15 @@ void rerender(Shader& shader) {
 
 	glGenVertexArrays(1, &VAO);
 	glGenBuffers(1, &VBO);
+	glGenBuffers(1, &EBO);
+
 	glBindVertexArray(VAO);
+
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	glBufferData(GL_ARRAY_BUFFER, points_vec.size() * sizeof(glm::vec3), new_points, GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_vec.size() * sizeof(unsigned int), indices_vec.data(), GL_STATIC_DRAW);
 
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(0);
@@ -207,11 +313,14 @@ void draw_equation_input(Equation& equation, Shader& shader, size_t index) {
 	ImGui::SliderFloat("Maximum X", &equation.max_x, 1, max_x_val);
 	ImGui::SliderFloat("Minimum Y", &equation.min_y, min_y_val, -0);
 	ImGui::SliderFloat("Maximum Y", &equation.max_y, 1, max_y_val);
+	ImGui::SliderFloat("Opacity", &equation.opacity, 0, 1);
 	bool visibility_toggle = ImGui::Checkbox("Toggle Visibility", &equation.is_visible);
-	ImGui::Checkbox("Toggle 3D", &equation.is_3d);
-	ImGui::Checkbox("Toggle Heatmap", &use_heatmap);
+	bool toggle_3d = ImGui::Checkbox("Toggle 3D", &equation.is_3d);
+	bool heatmap_toggle = ImGui::Checkbox("Toggle Heatmap", &use_heatmap);
+	bool mesh_toggle = ImGui::Checkbox("Toggle Mesh (might not work for all functions)", &equation.is_mesh);
 	if (ImGui::Button("Remove Equation")) {
 		equation.points_vec_equation.clear();
+		equation.indices.clear();
 
 		remove_equation(index);
 
@@ -221,12 +330,14 @@ void draw_equation_input(Equation& equation, Shader& shader, size_t index) {
 	ImGui::SameLine();
 	if (ImGui::Button("Render")) {
 		equation.points_vec_equation.clear();
+		equation.indices.clear();
 
 		generate_vertices(equation);
 		rerender(shader);
 	}
-	if (visibility_toggle) {
+	if (visibility_toggle || toggle_3d || heatmap_toggle || mesh_toggle) {
 		equation.points_vec_equation.clear();
+		equation.indices.clear();
 
 		generate_vertices(equation);
 		rerender(shader);
@@ -571,6 +682,7 @@ int main() {
 		shader.setFloat("min_height", min_height);
 		shader.setFloat("max_height", max_height);
 		shader.setFloat("point_size", point_size);
+		shader.setFloat("point_opacity", 1.0f);
 
 		if (show_gridlines) {
 			shader.setBool("use_gridline", true);
@@ -599,6 +711,10 @@ int main() {
 		if (ImGui::BeginMainMenuBar()) {
 			if (ImGui::BeginMenu("Options")) {
 				ImGui::InputFloat("Change Max View Distance", &max_view_distance);
+				ImGui::Separator();
+				ImGui::InputDouble("Adjust Derivative Threshold", &derivative_threshold);
+				ImGui::InputInt("Adjust Depth", &max_depth);
+				ImGui::Separator();
 				ImGui::Checkbox("Show Axes", &show_gridlines);
 				ImGui::Checkbox("Show Grid Lines", &show_lines);
 				ImGui::InputFloat("Change Minimum X value", &min_x_val);
@@ -606,6 +722,7 @@ int main() {
 				ImGui::InputFloat("Change Minimum Y value", &min_y_val);
 				ImGui::InputFloat("Change Maximum Y value", &max_y_val);
 				ImGui::InputFloat("Set Point Size", &point_size);
+				ImGui::Separator();
 				ImGui::InputText("Filepath for Import (don't forget .mat extension)", import_filepath, sizeof(import_filepath));
 				if (ImGui::Button("Import Equations")) {
 					import_data(import_filepath);
@@ -652,17 +769,23 @@ int main() {
 			for (auto& equation : equations) {
 				glm::vec3 colour = glm::make_vec3(equation.data);
 				shader.setVec3("color", colour);
+				shader.setFloat("point_opacity", equation.opacity);
 			}
 		}
 
 		glBindVertexArray(VAO);
-		glDrawArrays(GL_POINTS, 0, points_vec.size());
+
+		if (!indices_vec.empty())
+			glDrawElements(GL_TRIANGLES, indices_vec.size(), GL_UNSIGNED_INT, 0);
+
+		size_t array_start = indices_vec.empty() ? 0 : points_vec.size() - indices_vec.size();
+		glDrawArrays(GL_POINTS, array_start, points_vec.size() - array_start);
 
 		if (ImGui::Button("Add Equation")) {
 			add_equation();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Add Point")) {
+		if (ImGui::Button("Add Point")) {	
 			add_point();
 		}
 		ImGui::Text("Camera Position: %s", glm::to_string(camera.Position).c_str());
